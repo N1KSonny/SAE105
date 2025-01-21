@@ -4,215 +4,119 @@ import base64
 from io import BytesIO
 import matplotlib.pyplot as plt
 
-# Fonction pour analyser le fichier CSV
+# Analyse du fichier CSV pour extraire et traiter les données nécessaires
 def analyze_csv(csv_filename):
     try:
         # Lecture du fichier CSV
         data = pd.read_csv(csv_filename)
     except FileNotFoundError:
-        print(f"Le fichier n'existe pas à l'emplacement {os.path.abspath(csv_filename)}")
+        print(f"Fichier introuvable : {os.path.abspath(csv_filename)}")
         return None
     except pd.errors.EmptyDataError:
         print("Le fichier CSV est vide.")
         return None
     except Exception as e:
-        print(f"Erreur lors de la lecture du fichier CSV : {e}")
+        print(f"Erreur lors de la lecture : {e}")
         return None
 
-    # Afficher les colonnes pour diagnostiquer l'erreur
-    print("Colonnes du fichier CSV:", data.columns)
-
-    # Nettoyer les espaces dans les noms de colonnes
-    data.columns = data.columns.str.strip()
-
-    # Vérifier la présence des colonnes nécessaires
+    # Vérification et nettoyage des colonnes
+    data.columns = data.columns.str.strip()  # Suppression des espaces dans les noms de colonnes
     if 'IP Source' not in data.columns or 'IP Destination' not in data.columns:
-        print("Les colonnes 'IP Source' ou 'IP Destination' n'existent pas dans le fichier CSV.")
+        print("Colonnes 'IP Source' ou 'IP Destination' manquantes.")
         return None
 
-    # Analyser les adresses IP envoyant le plus de paquets
-    ip_counts = data['IP Source'].value_counts().head(10)
+    # Analyses de base : IPs sources et destinations
+    ip_counts = data['IP Source'].value_counts().head(10)  # Top 10 des IP sources
+    ip_dest_counts = data['IP Destination'].value_counts().head(10)  # Top 10 des IP destinations
 
-    # Nombre de paquets analysés et nombre d'IP sources et destinations
+    # Statistiques générales
     total_packets = data.shape[0]
     unique_ips_sources = data['IP Source'].nunique()
     unique_ips_dest = data['IP Destination'].nunique()
 
-    # Analyse des paquets par IP Destination
-    ip_dest_counts = data['IP Destination'].value_counts().head(10)
+    # Analyse des protocoles et tailles de paquets si les colonnes existent
+    protocol_counts = data['Protocol'].value_counts() if 'Protocol' in data.columns else None
+    packet_size_counts = data['Longueur du Paquet'].describe() if 'Longueur du Paquet' in data.columns else None
 
-    # Analyse des protocoles (si la colonne existe)
-    if 'Protocol' in data.columns:
-        protocol_counts = data['Protocol'].value_counts()
-    else:
-        protocol_counts = None
-
-    # Analyse de la taille des paquets (si la colonne existe)
-    if 'Longueur du Paquet' in data.columns:
-        packet_size_counts = data['Longueur du Paquet'].describe()
-    else:
-        packet_size_counts = None
-
-    # Générer un graphique des IPs sources envoyant le plus de paquets
-    fig, ax = plt.subplots(figsize=(8, 4))  # Taille du graphique réduite pour plus de lisibilité
-    ip_counts.plot(kind='bar', ax=ax, color='skyblue', edgecolor='black')
-    ax.set_title('Top 10 des IPs sources envoyant le plus de paquets')
-    ax.set_xlabel('Adresse IP source')
-    ax.set_ylabel('Nombre de paquets')
-    ax.set_xticklabels(ip_counts.index, rotation=45, ha='right', fontsize=8)
-
-    # Convertir le graphique en image base64 pour l'intégrer dans le HTML
-    img_buf = BytesIO()
-    fig.savefig(img_buf, format='png', bbox_inches='tight')  # bbox_inches='tight' pour éviter que l'image soit coupée
-    img_buf.seek(0)
-    img_base64 = base64.b64encode(img_buf.read()).decode('utf8')
-    plt.close(fig)
-
-    # Générer un graphique des IPs Destination
-    fig, ax = plt.subplots(figsize=(8, 4))  # Taille du graphique réduite pour plus de lisibilité
-    ip_dest_counts.plot(kind='bar', ax=ax, color='lightcoral', edgecolor='black')
-    ax.set_title('Top 10 des IPs Destination recevant le plus de paquets')
-    ax.set_xlabel('Adresse IP Destination')
-    ax.set_ylabel('Nombre de paquets')
-    ax.set_xticklabels(ip_dest_counts.index, rotation=45, ha='right', fontsize=8)
-
-    # Convertir le graphique en image base64 pour l'intégrer dans le HTML
-    img_buf = BytesIO()
-    fig.savefig(img_buf, format='png', bbox_inches='tight')
-    img_buf.seek(0)
-    img_base64_dest = base64.b64encode(img_buf.read()).decode('utf8')
-    plt.close(fig)
+    # Création de graphiques pour visualisation
+    img_base64 = create_bar_chart(ip_counts, "Top 10 des IPs sources", "IP Source", "Nombre de paquets")
+    img_base64_dest = create_bar_chart(ip_dest_counts, "Top 10 des IPs destinations", "IP Destination", "Nombre de paquets")
 
     # Analyse des flags
     flag_counts = data['Flag'].value_counts()
 
     return total_packets, unique_ips_sources, unique_ips_dest, ip_counts, ip_dest_counts, flag_counts, protocol_counts, packet_size_counts, img_base64, img_base64_dest
 
-# Génération du rapport HTML
+# Génération de graphiques sous forme d'images base64
+def create_bar_chart(data, title, xlabel, ylabel):
+    fig, ax = plt.subplots(figsize=(8, 4))
+    data.plot(kind='bar', ax=ax, color='skyblue', edgecolor='black')
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_xticklabels(data.index, rotation=45, ha='right', fontsize=8)
+
+    img_buf = BytesIO()
+    fig.savefig(img_buf, format='png', bbox_inches='tight')
+    img_buf.seek(0)
+    img_base64 = base64.b64encode(img_buf.read()).decode('utf8')
+    plt.close(fig)
+
+    return img_base64
+
+# Création d'un rapport HTML détaillé basé sur les analyses
 def generate_html_report(total_packets, unique_ips_sources, unique_ips_dest, ip_counts, ip_dest_counts, flag_counts, protocol_counts, packet_size_counts, img_base64, img_base64_dest, html_filename):
-    # Template HTML
     html_template = f"""
     <!DOCTYPE html>
     <html lang="fr">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Rapport CSV</title>
         <style>
-            body {{
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background-color: #f0f0f5;
-                margin: 0;
-                padding: 0;
-                color: #333;
-            }}
-            header {{
-                background-color: #1f3b4c;
-                color: white;
-                padding: 20px;
-                text-align: center;
-                font-size: 2rem;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                border-bottom: 2px solid #1d2a34;
-            }}
-            main {{
-                margin: 20px auto;
-                max-width: 1100px;
-                padding: 30px;
-                background-color: white;
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            }}
-            h2 {{
-                color: #1f3b4c;
-                margin-bottom: 20px;
-                font-weight: bold;
-            }}
-            .info {{
-                margin-bottom: 20px;
-                padding: 15px;
-                background-color: #f9f9f9;
-                border-radius: 5px;
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            }}
-            .data-table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin: 20px 0;
-                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            }}
-            .data-table th, .data-table td {{
-                border: 1px solid #ddd;
-                padding: 8px;
-                text-align: center;
-            }}
-            .data-table th {{
-                background-color: #1f3b4c;
-                color: white;
-            }}
-            footer {{
-                text-align: center;
-                margin-top: 40px;
-                padding: 15px;
-                color: #888;
-                font-size: 0.9rem;
-            }}
+            /* Style simplifié pour la présentation */
+            body {{ font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 0; }}
+            header {{ background: #333; color: white; padding: 20px; text-align: center; }}
+            main {{ padding: 20px; }}
+            img {{ max-width: 100%; }}
         </style>
     </head>
     <body>
-        <header>
-            Rapport d'Analyse TCPDump
-        </header>
+        <header>Rapport d'Analyse TCPDump</header>
         <main>
             <h2>Résumé des Données</h2>
-            <div class="info">
-                <strong>Nombre total de paquets analysés :</strong> {total_packets} <br>
-                <strong>Nombre d'IP Source uniques :</strong> {unique_ips_sources} <br>
-                <strong>Nombre d'IP Destination uniques :</strong> {unique_ips_dest} <br>
-            </div>
+            <p>Total de paquets : {total_packets}</p>
+            <p>IPs Sources uniques : {unique_ips_sources}</p>
+            <p>IPs Destinations uniques : {unique_ips_dest}</p>
 
-            <h2>Graphique des IPs sources envoyant le plus de paquets</h2>
-            <img src="data:image/png;base64,{img_base64}" alt="Graphique des IPs Source" />
+            <h2>Graphiques</h2>
+            <h3>Top IPs Sources</h3>
+            <img src="data:image/png;base64,{img_base64}" />
+            <h3>Top IPs Destinations</h3>
+            <img src="data:image/png;base64,{img_base64_dest}" />
 
-            <h2>Graphique des IPs Destination recevant le plus de paquets</h2>
-            <img src="data:image/png;base64,{img_base64_dest}" alt="Graphique des IPs Destination" />
+            <h2>Analyse des Flags</h2>
+            <pre>{flag_counts.to_string()}</pre>
 
-            <h2>Répartition des Flags</h2>
-            <div class="info">
-                {flag_counts.to_frame().to_html()}
-            </div>
-
-            {f"<h2>Répartition des Protocoles</h2><div class='info'>{protocol_counts.to_frame().to_html()}</div>" if protocol_counts is not None else ""}
-            
-            {f"<h2>Statistiques sur les Tailles des Paquets</h2><div class='info'>{packet_size_counts.to_frame().to_html()}</div>" if packet_size_counts is not None else ""}
+            {f"<h2>Analyse des Protocoles</h2><pre>{protocol_counts.to_string()}</pre>" if protocol_counts is not None else ""}
+            {f"<h2>Statistiques sur la Taille des Paquets</h2><pre>{packet_size_counts.to_string()}</pre>" if packet_size_counts is not None else ""}
         </main>
-        <footer>
-            Rapport généré automatiquement à partir du fichier CSV.
-        </footer>
     </body>
     </html>
     """
-
-    # Sauvegarder le fichier HTML
-    with open(html_filename, 'w', encoding='utf8') as html_file:
-        html_file.write(html_template)
-
-    print(f"Rapport HTML généré avec succès : {html_filename}")
+    with open(html_filename, 'w', encoding='utf8') as file:
+        file.write(html_template)
+    print(f"Rapport HTML généré : {html_filename}")
 
 # Exécution principale
 def main():
-    csv_filename = "C:/Users/33782/Documents/SAE105/Outputs/tcpdump_data.csv"
-    html_filename = "C:/Users/33782/Documents/SAE105/Outputs/rapport_tcpdump.html"
-    
-    # Analyser le fichier CSV
+    csv_filename = "C:/Users/Sonny/Documents/SAE105/Outputs/tcpdump_data.csv"
+    html_filename = "C:/Users/Sonny/Documents/SAE105/Outputs/rapport_tcpdump.html"
+
     analysis_result = analyze_csv(csv_filename)
-    
     if analysis_result:
-        total_packets, unique_ips_sources, unique_ips_dest, ip_counts, ip_dest_counts, flag_counts, protocol_counts, packet_size_counts, img_base64, img_base64_dest = analysis_result
-        # Générer le rapport HTML à partir des données extraites du CSV
-        generate_html_report(total_packets, unique_ips_sources, unique_ips_dest, ip_counts, ip_dest_counts, flag_counts, protocol_counts, packet_size_counts, img_base64, img_base64_dest, html_filename)
+        generate_html_report(*analysis_result, html_filename)
     else:
-        print("Aucune donnée n'a été extraite du fichier CSV.")
+        print("Analyse échouée.")
 
 if __name__ == "__main__":
     main()
